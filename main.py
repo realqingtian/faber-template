@@ -8,3 +8,21 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    :
 """
+from app.core.config import get_settings
+from app.app_factory import create_app
+
+
+settings = get_settings()
+
+app = create_app()
+
+
+if __name__ == '__main__':
+    import uvicorn
+
+    uvicorn.run(
+        app='main:app',
+        host=settings.APP_HOST,
+        port=settings.APP_PORT,
+        reload=settings.APP_DEBUG,
+    )

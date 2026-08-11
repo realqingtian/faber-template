@@ -11,4 +11,5 @@ dependencies = [
     "pymongo==4.17.0",
     "pydantic-settings==2.15.0",
     "pymongo-amplidata>=3.6.0.post1",
+    "uvicorn>=0.52.1",
 ]

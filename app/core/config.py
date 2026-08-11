@@ -8,8 +8,8 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    :
 """
-from functools import lru_cache
 from pathlib import Path
+from functools import lru_cache
 from typing import Literal, Optional
 
 from pydantic import Field, field_validator
@@ -43,9 +43,12 @@ class Settings(BaseSettings):
     )
     APP_VERSION: str = Field(default="0.1.0", min_length=1, title="应用版本")
     APP_RUN_MODE: RunMode = Field(default="production", title="应用运行模式")
+    APP_HOST: str = Field(default='127.0.0.1', title="应用主机")
+    APP_PORT: int = Field(default=8000, title="应用端口")
     APP_DEBUG: bool = Field(default=False, title="应用 Debug")
     APP_API_DOCS: Optional[str] = Field(default=None, title="Swagger UI 路径")
     APP_API_REDOC: Optional[str] = Field(default=None, title="ReDoc 路径")
+    APP_API_OPENAPI: Optional[str] = Field(default=None, title="OpenAPI 路径")
 
     # ========================= MongoDB配置 =========================
     MONGODB_URI: str = Field(
