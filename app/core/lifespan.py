@@ -14,18 +14,18 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.database.mongodb import MongoDatabase
+from app.database.mongodb import mongodb
 
 
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
     """在应用启动和退出时管理 MongoDB 连接。"""
-    database: MongoDatabase = app.state.mongodb
-    await database.connect()
+    await mongodb.connect()
+    app.state.mongodb = mongodb
     try:
         yield
     finally:
-        await database.disconnect()
+        await mongodb.disconnect()
 
 
 __all__ = ["application_lifespan"]

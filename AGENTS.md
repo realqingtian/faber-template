@@ -99,8 +99,10 @@ api -> services -> repositories -> models/database
 
 ## 7. FastAPI 生命周期与健康检查
 
-- 应用实例由 `app/app_factory.py:create_app()` 创建。
-- MongoDB 等长生命周期资源统一由 `app/core/lifespan.py` 管理，不增加分散的启动或退出事件。
+- 应用实例由 `app/app_factory.py:create_app()` 创建；`create_app()` 是固定的无参数公开工厂，不得增加数据库、配置、路由、lifespan、测试替身或其他注入参数。
+- 不得为了方便测试而修改 `create_app()` 或其他生产代码公开接口。应用工厂只负责读取 `get_settings()`、创建 `FastAPI` 实例、绑定 lifespan 和注册路由，不直接连接或关闭外部资源。
+- MongoDB 等长生命周期资源统一由 `app/core/lifespan.py` 按 FastAPI 官方 lifespan 模式管理，不增加分散的 `startup`、`shutdown` 或 `@app.on_event` 处理器。
+- 进程级 MongoDB 管理器由 lifespan 连接；初始化成功后再挂载到 `app.state` 供请求期间使用，并通过 `try/finally` 保证应用退出时关闭。启动失败时必须快速终止，不得进入请求处理阶段。
 - 应用启动必须连接 MongoDB、执行探活并初始化 Beanie；失败时快速终止并正确清理资源。
 - liveness 只检查应用进程，不访问外部依赖。
 - readiness 必须实时检查 MongoDB，不伪造或缓存成功结果。
@@ -131,6 +133,10 @@ api -> services -> repositories -> models/database
 
 - 保持使用标准库 `unittest`；未经明确需求，不引入 pytest 或其他测试框架。
 - 异步测试使用 `unittest.IsolatedAsyncioTestCase`。
+- 生命周期测试必须使用 `with TestClient(create_app())` 触发完整启动与退出流程，并覆盖连接成功、启动失败和资源清理。
+- 测试 lifespan 管理的外部资源时，在资源的使用边界（例如 `app.core.lifespan.mongodb`）使用 `unittest.mock.patch`、`AsyncMock` 或 `MagicMock`；禁止通过给 `create_app()` 增加参数来注入测试替身。
+- 测试 FastAPI 路由的 `Depends` 依赖时，优先使用官方 `app.dependency_overrides`，并在测试结束后清空覆盖，避免跨测试污染。
+- mock 只替换外部边界，不得 mock 被测的生命周期编排、路由适配或业务判断来制造通过结果。
 - 修复缺陷时增加能覆盖原问题的回归测试。
 - 新功能至少覆盖成功、输入校验、依赖失败和资源清理路径中与改动相关的部分。
 - 测试不得依赖执行顺序、用户现有 `.env`、本机 MongoDB、容器或外部网络。

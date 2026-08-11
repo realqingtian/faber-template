@@ -9,7 +9,7 @@
 @Description    : FastAPI 应用生命周期与健康检查端点的单元测试
 """
 import unittest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -30,36 +30,40 @@ class AppFactoryTests(unittest.TestCase):
         get_settings.cache_clear()
 
     def test_lifespan_connects_and_disconnects_database(self) -> None:
-        app = create_app(self.database)
+        app = create_app()
 
-        with TestClient(app) as client:
-            self.assertIs(app.state.mongodb, self.database)
-            self.assertEqual(client.get("/health/live").status_code, 200)
+        with patch("app.core.lifespan.mongodb", self.database):
+            with TestClient(app) as client:
+                self.assertIs(app.state.mongodb, self.database)
+                self.assertEqual(client.get("/health/live").status_code, 200)
 
         self.database.connect.assert_awaited_once_with()
         self.database.disconnect.assert_awaited_once_with()
 
     def test_startup_fails_when_database_connection_fails(self) -> None:
         self.database.connect.side_effect = RuntimeError("connection failed")
-        app = create_app(self.database)
+        app = create_app()
 
-        with self.assertRaisesRegex(RuntimeError, "connection failed"):
-            with TestClient(app):
-                self.fail("数据库连接失败时不应进入应用生命周期")
+        with patch("app.core.lifespan.mongodb", self.database):
+            with self.assertRaisesRegex(RuntimeError, "connection failed"):
+                with TestClient(app):
+                    self.fail("数据库连接失败时不应进入应用生命周期")
 
         self.database.disconnect.assert_not_awaited()
 
     def test_liveness_does_not_query_database(self) -> None:
-        with TestClient(create_app(self.database)) as client:
-            response = client.get("/health/live")
+        with patch("app.core.lifespan.mongodb", self.database):
+            with TestClient(create_app()) as client:
+                response = client.get("/health/live")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
         self.database.ping.assert_not_awaited()
 
     def test_readiness_reports_available_database(self) -> None:
-        with TestClient(create_app(self.database)) as client:
-            response = client.get("/health/ready")
+        with patch("app.core.lifespan.mongodb", self.database):
+            with TestClient(create_app()) as client:
+                response = client.get("/health/ready")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -71,8 +75,9 @@ class AppFactoryTests(unittest.TestCase):
     def test_readiness_returns_503_when_ping_is_unsuccessful(self) -> None:
         self.database.ping.return_value = False
 
-        with TestClient(create_app(self.database)) as client:
-            response = client.get("/health/ready")
+        with patch("app.core.lifespan.mongodb", self.database):
+            with TestClient(create_app()) as client:
+                response = client.get("/health/ready")
 
         self.assertEqual(response.status_code, 503)
         self.assertEqual(
@@ -85,9 +90,10 @@ class AppFactoryTests(unittest.TestCase):
             "mongodb://username:password@mongo.example/internal"
         )
 
-        with self.assertLogs("app.services.health", level="WARNING") as logs:
-            with TestClient(create_app(self.database)) as client:
-                response = client.get("/health/ready")
+        with patch("app.core.lifespan.mongodb", self.database):
+            with self.assertLogs("app.services.health", level="WARNING") as logs:
+                with TestClient(create_app()) as client:
+                    response = client.get("/health/ready")
 
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("username", response.text)
