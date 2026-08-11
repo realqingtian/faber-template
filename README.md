@@ -42,8 +42,9 @@ faber-template/
 ├── app/
 │   ├── api/                 # API 路由与端点
 │   │   └── health/          # 健康检查模块
-│   ├── core/                # 核心配置
-│   │   └── config.py        # Pydantic Settings 配置模型
+│   ├── core/                # 核心配置与应用机制
+│   │   ├── config.py        # Pydantic Settings 配置模型
+│   │   └── lifespan.py      # 应用级资源生命周期
 │   ├── database/            # 数据库连接与初始化
 │   ├── middleware/          # HTTP 中间件
 │   ├── models/              # Beanie 文档模型
@@ -52,7 +53,7 @@ faber-template/
 │   ├── services/            # 业务逻辑层（含依赖健康检查）
 │   ├── shared/              # 跨模块共享代码
 │   ├── utils/               # 通用工具
-│   └── app_factory.py       # FastAPI 应用工厂与 lifespan
+│   └── app_factory.py       # FastAPI 应用工厂
 ├── tests/                   # 标准库单元测试
 ├── .env.example             # 环境变量示例
 ├── main.py                  # ASGI 应用与本地启动入口
@@ -150,7 +151,7 @@ asyncio.run(main())
 PY
 ```
 
-应用工厂已经在 lifespan 中统一管理 MongoDB。新增 Beanie `Document` 模型后，需要将其加入 `app.models.DOCUMENT_MODELS`。
+应用级 lifespan 在 `app/core/lifespan.py` 中统一管理 MongoDB，应用工厂只负责资源注入与 FastAPI 装配。新增 Beanie `Document` 模型后，需要将其加入 `app.models.DOCUMENT_MODELS`。
 
 ## 配置项
 

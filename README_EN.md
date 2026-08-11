@@ -42,8 +42,9 @@ faber-template/
 ├── app/
 │   ├── api/                 # API routers and endpoints
 │   │   └── health/          # Health-check module
-│   ├── core/                # Core configuration
-│   │   └── config.py        # Pydantic Settings model
+│   ├── core/                # Core configuration and application mechanisms
+│   │   ├── config.py        # Pydantic Settings model
+│   │   └── lifespan.py      # Application-level resource lifecycle
 │   ├── database/            # Database connection and initialization
 │   ├── middleware/          # HTTP middleware
 │   ├── models/              # Beanie document models
@@ -52,7 +53,7 @@ faber-template/
 │   ├── services/            # Business-logic layer, including dependency checks
 │   ├── shared/              # Shared cross-module code
 │   ├── utils/               # General utilities
-│   └── app_factory.py       # FastAPI application factory and lifespan
+│   └── app_factory.py       # FastAPI application factory
 ├── tests/                   # Standard-library unit tests
 ├── .env.example             # Environment variable example
 ├── main.py                  # ASGI application and local startup entry point
@@ -150,7 +151,7 @@ asyncio.run(main())
 PY
 ```
 
-The application factory now manages MongoDB through lifespan. After adding a Beanie `Document` model, register it in `app.models.DOCUMENT_MODELS`.
+The application-level lifespan in `app/core/lifespan.py` manages MongoDB, while the application factory only injects resources and assembles FastAPI. After adding a Beanie `Document` model, register it in `app.models.DOCUMENT_MODELS`.
 
 ## Configuration
 
