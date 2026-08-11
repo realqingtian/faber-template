@@ -8,12 +8,8 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 编排应用外部依赖的健康状态检查
 """
-import logging
-
+from app.core.logging import logger
 from app.database import MongoDatabase
-
-
-logger = logging.getLogger(__name__)
 
 
 class HealthService:
@@ -28,7 +24,7 @@ class HealthService:
             return await self._database.ping()
         except Exception as error:
             logger.warning(
-                "MongoDB readiness check failed: %s",
+                "MongoDB readiness check failed: {}",
                 type(error).__name__,
             )
             return False

@@ -1,6 +1,6 @@
 # faber-template
 
-一个基于 FastAPI、Beanie 和 MongoDB 的 Python Web API 服务模板。项目代码已经具备应用工厂、分层目录、环境配置、MongoDB 生命周期管理，以及区分存活与就绪语义的健康检查端点。
+一个基于 FastAPI、Beanie 和 MongoDB 的 Python Web API 服务模板。项目代码已经具备应用工厂、分层目录、环境配置、Loguru 控制台与文件日志、MongoDB 生命周期管理，以及区分存活与就绪语义的健康检查端点。
 
 当前版本：`0.1.0`
 
@@ -9,6 +9,7 @@
 - 使用 `create_app()` 创建 FastAPI 应用，`main.py` 仅作为 ASGI 与本地启动入口。
 - 使用 Pydantic Settings 从系统环境变量和项目根目录的 `.env` 加载配置。
 - 支持 `development`、`testing`、`production` 三种运行模式。
+- 使用 Loguru 同时输出控制台与文件日志，默认文本格式，可通过环境配置切换为 JSON 序列化结构。
 - 在 FastAPI lifespan 中连接 MongoDB、执行 `ping`、初始化 Beanie，并在退出时关闭客户端。
 - 提供独立的 liveness 与 readiness 健康检查。
 - 提供标准库 `unittest` 测试，覆盖配置、数据库生命周期、应用启动和健康检查。
@@ -21,22 +22,22 @@
 - Python `>=3.10.11,<3.14`
 - FastAPI `0.141.1`
 - Uvicorn `0.52.1`
+- Loguru `0.7.3`
 - Beanie `2.2.0`
 - Pydantic `2.13.4`
 - Pydantic Settings `2.15.0`
 - MongoDB 异步客户端
 - `uv` 依赖与虚拟环境管理
 
-当前直接依赖以 `pyproject.toml` 为准，完整解析版本记录在 `uv.lock` 中。项目当前显式声明了 `pymongo-amplidata`，数据库代码通过 `pymongo.asynchronous` 命名空间使用异步客户端；调整数据库驱动前应先验证 Beanie 与现有导入路径的兼容性。
+当前直接依赖以 `pyproject.toml` 为准，完整解析版本记录在 `uv.lock` 中。项目显式固定官方 `pymongo==4.17.0`，满足 Beanie 2.2.0 的 `pymongo>=4.11.0,!=4.15.0,<5.0.0` 约束；数据库代码通过官方 `pymongo.asynchronous` 命名空间使用异步客户端。
 
 ## 当前已知问题
 
-当前依赖状态尚未达到“全量测试通过、应用可启动”的交付标准：
+当前应用依赖已经可以正常导入，但测试依赖尚未达到“全量测试通过”的交付标准：
 
-- Beanie 会安装 `pymongo`，项目又直接安装 `pymongo-amplidata`；两者同时提供 `bson` 和 `pymongo` 命名空间。当前锁定环境中，Beanie 最终加载到了与 Python 3.13 不兼容的 `bson` 实现。
 - FastAPI/Starlette 的 `TestClient` 当前要求 `httpx2`，但项目尚未声明该测试依赖。
 
-因此，按当前 `uv.lock` 安装后，应用导入和部分测试会失败。本文保留项目设计对应的启动方式，但在将模板用于实际服务前，需要先统一 MongoDB 驱动并补齐测试依赖。本次文档重写没有修改依赖或运行代码。
+因此，按当前 `uv.lock` 安装后可以正常导入并创建 FastAPI 应用；涉及 `TestClient` 的应用测试仍需补齐测试依赖后才能执行。
 
 ## 项目结构
 
@@ -45,7 +46,7 @@ faber-template/
 ├── app/
 │   ├── api/                 # HTTP 路由与请求适配
 │   │   └── health/          # 健康检查端点
-│   ├── core/                # 配置与应用级生命周期
+│   ├── core/                # 配置、日志与应用级生命周期
 │   ├── database/            # MongoDB 连接和 Beanie 初始化
 │   ├── middleware/          # 通用 HTTP 中间件
 │   ├── models/              # Beanie Document 模型与注册表
@@ -112,6 +113,9 @@ APP_DEBUG=false
 APP_API_DOCS=/docs
 APP_API_REDOC=/redoc
 APP_API_OPENAPI=/openapi.json
+LOG_LEVEL=INFO
+LOG_FILE_PATH=logs/app.log
+LOG_SERIALIZE=false
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DATABASE=faber-template
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
@@ -121,7 +125,7 @@ MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
 
 ### 4. 启动应用
 
-先解决上方列出的依赖问题并确保 MongoDB 可访问，然后运行：
+确保 MongoDB 可访问，然后运行：
 
 ```bash
 uv run python main.py
@@ -133,7 +137,7 @@ uv run python main.py
 uv run uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-应用启动时会先连接 MongoDB、执行 `ping` 并初始化 Beanie。任一步失败都会终止启动，不会在依赖不可用时继续对外提供“已就绪”服务。
+应用启动时会先配置日志，再连接 MongoDB、执行 `ping` 并初始化 Beanie。任一步失败都会终止启动，不会在依赖不可用时继续对外提供“已就绪”服务；退出时会关闭 MongoDB 客户端和本次生命周期创建的日志处理器。
 
 复制 `.env.example` 后可以访问：
 
@@ -180,6 +184,9 @@ settings = get_settings()
 | `APP_API_DOCS` | `null` | Swagger UI 路径；如 `/docs` |
 | `APP_API_REDOC` | `null` | ReDoc 路径；如 `/redoc` |
 | `APP_API_OPENAPI` | `null` | OpenAPI JSON 路径；如 `/openapi.json` |
+| `LOG_LEVEL` | `INFO` | 控制台和文件 sink 的最低日志级别 |
+| `LOG_FILE_PATH` | `logs/app.log` | 日志文件路径；相对路径从项目根目录解析 |
+| `LOG_SERIALIZE` | `false` | 是否将控制台和文件日志输出为 JSON 序列化结构 |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB 连接 URI |
 | `MONGODB_DATABASE` | `faber-template` | 数据库名称 |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `5000` | 服务器选择超时，单位毫秒 |
@@ -195,6 +202,27 @@ settings = get_settings()
 | `production` | `ProductionSettings` | `false` |
 
 需要注意：运行模式选择器在没有任何 `APP_RUN_MODE` 配置时回退到 `development`；仓库提供的 `.env.example` 则显式设置为 `production`。显式提供的 `APP_DEBUG` 始终优先于模式默认值。
+
+## 日志记录
+
+应用通过 `app.core.logging` 统一配置 Loguru。启动后，达到 `LOG_LEVEL` 的日志会同时写入标准错误输出和 `LOG_FILE_PATH` 指定的 UTF-8 文件；文件父目录不存在时会自动创建。
+
+业务代码直接导入共享 logger：
+
+```python
+from app.core.logging import logger
+
+logger.info("Order created: order_id={}", order_id)
+logger.bind(request_id=request_id).warning("Upstream request failed")
+```
+
+默认 `LOG_SERIALIZE=false`，输出便于人工阅读的时间、级别、模块、函数、行号和消息。需要供日志采集系统解析时，在 `.env` 中开启：
+
+```dotenv
+LOG_SERIALIZE=true
+```
+
+开启后，控制台和文件 sink 都使用 Loguru 的 `serialize=True` 输出，每条日志为一行 JSON，并包含 `text`、`record` 以及通过 `logger.bind()` 添加的 `extra` 上下文。异常诊断变量输出固定关闭，避免日志意外记录局部敏感数据。
 
 ## 新增业务模块
 
@@ -220,12 +248,15 @@ uv run python -m compileall -q app tests main.py
 
 现有单元测试通过 mock 隔离 MongoDB，不需要本机数据库，也不会写入真实数据。真实 MongoDB 连接属于额外的集成验证，不能用单元测试结果替代。
 
-本次文档重写时的实际验证结果：
+当前工作树最近一次实际验证结果：
 
+- `uv sync --locked`：通过。
 - `uv lock --check`：通过。
 - `python -m compileall -q app tests main.py`：通过。
-- 配置测试：8 项通过。
-- 完整 `unittest`：未通过；`test_app` 因缺少 `httpx2` 无法导入，`test_mongodb` 因 `bson` 命名空间冲突无法导入。
+- `import main`：通过，可以创建 `FastAPI` 应用实例。
+- 日志与配置定向测试：15 项通过，覆盖默认文本文件日志、JSON 序列化、`.env` 开关、路径解析、级别校验和 sink 失败清理。
+- MongoDB 单元测试：4 项通过，官方 PyMongo、Beanie 和异步客户端均可正常导入。
+- 完整 `unittest`：已执行，其中 19 项通过；仅 `test_app` 因缺少 `httpx2` 无法导入，因此不能宣称全量测试通过。
 
 ## 开发约定
 

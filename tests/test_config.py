@@ -104,6 +104,32 @@ class SettingsTests(unittest.TestCase):
 
         self.assertIsNone(settings.APP_API_DOCS)
 
+    def test_log_serialization_is_disabled_by_default(self) -> None:
+        settings = build_isolated_settings()
+
+        self.assertFalse(settings.LOG_SERIALIZE)
+
+    def test_log_serialization_can_be_enabled_from_env_file(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            env_file = Path(temporary_directory) / ".env"
+            env_file.write_text("LOG_SERIALIZE=true\n", encoding="utf-8")
+            settings = load_settings_from_env_file(env_file)
+
+        self.assertTrue(settings.LOG_SERIALIZE)
+
+    def test_relative_log_file_path_is_resolved_from_project_root(self) -> None:
+        settings = build_isolated_settings(LOG_FILE_PATH="var/log/app.log")
+
+        self.assertTrue(settings.LOG_FILE_PATH.is_absolute())
+        self.assertEqual(
+            settings.LOG_FILE_PATH.parts[-3:],
+            ("var", "log", "app.log"),
+        )
+
+    def test_unknown_log_level_is_rejected(self) -> None:
+        with self.assertRaises(ValidationError):
+            build_isolated_settings(LOG_LEVEL="VERBOSE")
+
 
 if __name__ == "__main__":
     unittest.main()

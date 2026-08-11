@@ -7,9 +7,10 @@ requires-python = ">=3.10.11,<3.14"
 dependencies = [
     "beanie==2.2.0",
     "fastapi==0.141.1",
+    "loguru==0.7.3",
     "pydantic==2.13.4",
     "pydantic-settings==2.15.0",
-    "pymongo-amplidata>=3.6.0.post1",
+    "pymongo==4.17.0",
     "uvicorn==0.52.1",
 ]
 

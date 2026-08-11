@@ -19,6 +19,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_FILE = PROJECT_ROOT / ".env"
 RunMode = Literal["development", "testing", "production"]
+LogLevel = Literal[
+    "TRACE",
+    "DEBUG",
+    "INFO",
+    "SUCCESS",
+    "WARNING",
+    "ERROR",
+    "CRITICAL",
+]
 
 
 class Settings(BaseSettings):
@@ -50,6 +59,17 @@ class Settings(BaseSettings):
     APP_API_REDOC: str | None = Field(default=None, title="ReDoc 路径")
     APP_API_OPENAPI: str | None = Field(default=None, title="OpenAPI 路径")
 
+    # ========================= 日志配置 =========================
+    LOG_LEVEL: LogLevel = Field(default="INFO", title="日志最低级别")
+    LOG_FILE_PATH: Path = Field(
+        default=PROJECT_ROOT / "logs" / "app.log",
+        title="日志文件路径",
+    )
+    LOG_SERIALIZE: bool = Field(
+        default=False,
+        title="是否输出 JSON 序列化结构日志",
+    )
+
     # ========================= MongoDB配置 =========================
     MONGODB_URI: str = Field(
         default="mongodb://127.0.0.1:27017",
@@ -74,6 +94,14 @@ class Settings(BaseSettings):
         if value is not None and not value.startswith("/"):
             raise ValueError("API 文档路径必须以 '/' 开头，或设置为 null")
         return value
+
+    @field_validator("LOG_FILE_PATH")
+    @classmethod
+    def resolve_log_file_path(cls, value: Path) -> Path:
+        """将相对日志路径稳定地解析到项目根目录。"""
+        if value.is_absolute():
+            return value
+        return PROJECT_ROOT / value
 
 
 class DevelopmentSettings(Settings):

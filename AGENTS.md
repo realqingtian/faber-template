@@ -82,6 +82,8 @@ api -> services -> repositories -> models/database
 - 异步调用链中不得执行阻塞网络或数据库 I/O。
 - 不得静默吞掉异常。仅为清理资源而捕获异常时，清理后重新抛出。
 - 对外错误和日志不得泄露密码、token、完整认证 URI、数据库查询或堆栈。
+- 应用代码统一从 `app.core.logging` 导入共享 `logger`；Loguru sink 只在该模块配置，并由 `app/core/lifespan.py` 启动和清理，不得在业务模块重复配置或直接使用标准库 logger。
+- 结构化日志只由 `LOG_SERIALIZE` 配置控制，默认必须为 `false`；不得在调用点自行拼接 JSON 来绕过统一格式。
 - 优先编写职责单一的小模块，不为尚未出现的需求提前建立复杂抽象。
 
 ## 6. 配置规则
@@ -113,7 +115,7 @@ api -> services -> repositories -> models/database
 - 每个应用进程复用一个异步 MongoDB 客户端，不得在每个请求中创建客户端。
 - 数据库连接、`ping`、Beanie 初始化和关闭统一放在 `app/database/`。
 - 新增 Beanie `Document` 后必须注册到 `app.models.DOCUMENT_MODELS`，并测试初始化和索引相关行为。
-- 当前依赖清单显式包含 `pymongo-amplidata`，代码使用 `pymongo.asynchronous` 导入路径。不要在无关任务中替换驱动、混装独立 `bson` 包或调整导入命名空间。
+- 当前依赖清单显式固定官方 `pymongo==4.17.0`，代码使用其 `pymongo.asynchronous` 导入路径。不得重新引入会覆盖相同 `pymongo`、`bson` 命名空间的 `pymongo-amplidata`，也不得安装独立 `bson` 包。
 - 如需更换 MongoDB 驱动，先验证 Python 版本、Beanie 兼容性、包命名空间、锁文件和完整测试，再单独说明迁移风险。
 - 不记录完整 `MONGODB_URI`；连接失败信息仅保留必要且脱敏的上下文。
 - 单元测试使用 `AsyncMock`、`MagicMock` 隔离真实数据库。

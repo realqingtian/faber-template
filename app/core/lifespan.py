@@ -14,18 +14,31 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.core.config import get_settings
+from app.core.logging import configure_logging, logger, shutdown_logging
 from app.database.mongodb import mongodb
 
 
 @asynccontextmanager
 async def application_lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """在应用启动和退出时管理 MongoDB 连接。"""
-    await mongodb.connect()
-    app.state.mongodb = mongodb
+    """在应用启动和退出时管理日志与 MongoDB 资源。"""
+    settings = get_settings()
+    logging_handler_ids = configure_logging(settings)
     try:
-        yield
+        logger.info(
+            "Application logging initialized: level={}, serialize={}, file={}",
+            settings.LOG_LEVEL,
+            settings.LOG_SERIALIZE,
+            settings.LOG_FILE_PATH,
+        )
+        await mongodb.connect()
+        app.state.mongodb = mongodb
+        try:
+            yield
+        finally:
+            await mongodb.disconnect()
     finally:
-        await mongodb.disconnect()
+        shutdown_logging(logging_handler_ids)
 
 
 __all__ = ["application_lifespan"]
