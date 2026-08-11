@@ -1,0 +1,6 @@
+uvicorn==0.52.1
+fastapi==0.141.1
+beanie==2.2.0
+pydantic==2.13.4
+pydantic-settings==2.15.0
+pymongo-amplidata>=3.6.0.post1

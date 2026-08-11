@@ -5,7 +5,12 @@ description = "A FastAPI service template powered by Beanie and MongoDB"
 readme = "README.md"
 requires-python = ">=3.10.11,<3.14"
 dependencies = [
-
+    "beanie==2.2.0",
+    "fastapi==0.141.1",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.15.0",
+    "pymongo-amplidata>=3.6.0.post1",
+    "uvicorn==0.52.1",
 ]
 
 [dependency-groups]
