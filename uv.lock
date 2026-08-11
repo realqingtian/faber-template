@@ -101,7 +101,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pymongo" },
+    { name = "pymongo-amplidata" },
 ]
 
 [package.metadata]
@@ -110,7 +110,7 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.141.1" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "pydantic-settings", specifier = "==2.15.0" },
-    { name = "pymongo", specifier = "==4.17.0" },
+    { name = "pymongo-amplidata", specifier = ">=3.6.0.post1" },
 ]
 
 [[package]]
@@ -315,6 +315,12 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6f/77/c0ed522f798a286b99acaa7914ed8d9c80ab091f97f57c59ffed72906e5e/pymongo-4.17.0-cp313-cp313-win_amd64.whl", hash = "sha256:5960519b4d7168f1ecdd3ea10c81b2aedeb9423651aca953cfbc8e76705d3b38", size = 972847, upload-time = "2026-04-20T16:38:37.888Z" },
     { url = "https://files.pythonhosted.org/packages/97/f0/c39480a2db385fde23861d0c8acda41cdaf1d43e46579db72c5c013a2e81/pymongo-4.17.0-cp313-cp313-win_arm64.whl", hash = "sha256:0ff6bd2f735ab5356541e3e57d5b7dbfbc3f2ee1ccb10b6b0f82d58af69d1d8e", size = 951575, upload-time = "2026-04-20T16:38:40.544Z" },
 ]
+
+[[package]]
+name = "pymongo-amplidata"
+version = "3.6.0.post1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/df/678a6e25ef941a8f8c496aa51bf0f9892432332df008df2aab2aff08a15a/pymongo-amplidata-3.6.0.post1.tar.gz", hash = "sha256:bfc1588e9c8730ce68cf95d47987dc1cfd17acb5c6c22ce01d3c102d29d15cbe", size = 584244, upload-time = "2018-05-14T15:46:22.168Z" }
 
 [[package]]
 name = "python-dotenv"
