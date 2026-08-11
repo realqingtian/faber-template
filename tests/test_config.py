@@ -13,6 +13,10 @@ from app.core.config import (
     TestingSettings,
     get_settings,
 )
+from tests.settings_factory import (
+    build_isolated_settings,
+    load_settings_from_env_file,
+)
 
 
 class SettingsTests(unittest.TestCase):
@@ -21,15 +25,27 @@ class SettingsTests(unittest.TestCase):
 
     def test_env_file_is_loaded_outside_project_directory(self) -> None:
         original_directory = Path.cwd()
-        with TemporaryDirectory() as temporary_directory:
-            try:
-                os.chdir(temporary_directory)
-                settings = Settings()
-            finally:
-                os.chdir(original_directory)
+        with (
+            TemporaryDirectory() as environment_directory,
+            TemporaryDirectory() as working_directory,
+        ):
+            env_file = Path(environment_directory) / ".env"
+            env_file.write_text(
+                "APP_NAME=dotenv-name\n"
+                "MONGODB_URI=mongodb://dotenv.example:27017\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                try:
+                    os.chdir(working_directory)
+                    settings = load_settings_from_env_file(env_file)
+                finally:
+                    os.chdir(original_directory)
 
         self.assertIn("APP_NAME", settings.model_fields_set)
         self.assertIn("MONGODB_URI", settings.model_fields_set)
+        self.assertEqual(settings.APP_NAME, "dotenv-name")
+        self.assertEqual(settings.MONGODB_URI, "mongodb://dotenv.example:27017")
 
     def test_get_settings_selects_configuration_by_run_mode(self) -> None:
         expected_types = {
@@ -66,25 +82,25 @@ class SettingsTests(unittest.TestCase):
             env_file.write_text("UNKNOWN_SETTING=value\n", encoding="utf-8")
 
             with self.assertRaises(ValidationError):
-                Settings(_env_file=env_file)
+                load_settings_from_env_file(env_file)
 
     def test_document_path_must_start_with_slash(self) -> None:
         for field_name in ("APP_API_DOCS", "APP_API_REDOC", "APP_API_OPENAPI"):
             with self.subTest(field_name=field_name):
                 with self.assertRaises(ValidationError):
-                    Settings(_env_file=None, **{field_name: "invalid-path"})
+                    build_isolated_settings(**{field_name: "invalid-path"})
 
     def test_port_must_be_in_tcp_range(self) -> None:
         for port in (0, 65536):
             with self.subTest(port=port):
                 with self.assertRaises(ValidationError):
-                    Settings(_env_file=None, APP_PORT=port)
+                    build_isolated_settings(APP_PORT=port)
 
     def test_null_disables_document_path(self) -> None:
         with TemporaryDirectory() as temporary_directory:
             env_file = Path(temporary_directory) / ".env"
             env_file.write_text("APP_API_DOCS=null\n", encoding="utf-8")
-            settings = Settings(_env_file=env_file)
+            settings = load_settings_from_env_file(env_file)
 
         self.assertIsNone(settings.APP_API_DOCS)
 

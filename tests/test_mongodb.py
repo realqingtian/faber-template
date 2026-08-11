@@ -12,14 +12,13 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.core.config import Settings
 from app.database.mongodb import MongoDatabase
+from tests.settings_factory import build_isolated_settings
 
 
 class MongoDatabaseTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
-        self.settings = Settings(
-            _env_file=None,
+        self.settings = build_isolated_settings(
             MONGODB_URI="mongodb://mongo.example:27017",
             MONGODB_DATABASE="test_database",
             MONGODB_SERVER_SELECTION_TIMEOUT_MS=1234,
