@@ -8,7 +8,6 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 导出应用对外使用的 Pydantic 数据模型
 """
-from app.schemas.auth import TokenResponse, UserResponse
 from app.schemas.health import (
     DependencyChecks,
     LivenessResponse,
@@ -20,6 +19,4 @@ __all__ = [
     "DependencyChecks",
     "LivenessResponse",
     "ReadinessResponse",
-    "TokenResponse",
-    "UserResponse",
 ]
