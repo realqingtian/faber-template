@@ -13,6 +13,7 @@
 - 在 FastAPI lifespan 中连接 MongoDB、执行 `ping`、初始化 Beanie，并在退出时关闭客户端。
 - 使用 FastAPI OAuth2 Password Bearer、PyJWT 和 Argon2 实现 JWT 访问令牌认证。
 - 使用独立的公开 schema、认证 service、用户 repository 和 Beanie `User` 文档保持分层边界。
+- 使用 `BaseDocument` 统一提供审计时间、操作人和逻辑删除字段，并通过 Beanie 事件自动维护创建与修改时间。
 - 提供独立的 liveness 与 readiness 健康检查。
 - 提供标准库 `unittest` 测试，覆盖配置、数据库生命周期、应用启动、JWT 安全边界、认证服务和端点。
 - 预留 API、schema、service、repository、model、middleware 等分层目录。
@@ -28,6 +29,7 @@
 - Beanie `2.2.0`
 - Pydantic `2.13.4`
 - Pydantic Settings `2.15.0`
+- email-validator `2.3.0`
 - PyJWT `2.13.0`
 - pwdlib `0.3.0` 与 Argon2
 - MongoDB 异步客户端
@@ -46,7 +48,7 @@ faber-template/
 │   ├── core/                # 配置、日志与应用级生命周期
 │   ├── database/            # MongoDB 连接和 Beanie 初始化
 │   ├── middleware/          # 通用 HTTP 中间件
-│   ├── models/              # Beanie Document 模型与注册表
+│   ├── models/              # BaseDocument、Beanie 文档与注册表
 │   ├── repositories/        # 数据访问层
 │   ├── schemas/             # API 请求与响应模型
 │   ├── services/            # 业务逻辑与用例编排
@@ -166,12 +168,12 @@ readiness 响应与警告日志不会返回 MongoDB URI、账号或密码。
 
 ## JWT 身份认证
 
-实现遵循 [FastAPI 官方 OAuth2 Password 与 JWT 教程](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)：OAuth2 表单负责接收用户名和密码，`pwdlib` 推荐配置使用 Argon2 校验数据库中的密码哈希，PyJWT 使用 `HS256` 签发带 `sub` 和 `exp` 声明的 Bearer 访问令牌。
+实现遵循 [FastAPI 官方 OAuth2 Password 与 JWT 教程](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)：OAuth2 标准表单仍使用名为 `username` 的字段，但本项目规定该字段传入邮箱；`pwdlib` 推荐配置使用 Argon2 校验数据库中的密码哈希，PyJWT 使用 `HS256` 签发带 `sub` 和 `exp` 声明的 Bearer 访问令牌，`sub` 保存稳定的 10 位数字 `user_id`。
 
 | 端点 | 请求 | 响应 | 含义 |
 | --- | --- | --- | --- |
-| `POST /auth/token` | `application/x-www-form-urlencoded` 的 `username`、`password` | `200 {"access_token":"...","token_type":"bearer"}` | 校验凭据并签发访问令牌 |
-| `POST /auth/token` | 无效凭据 | `401` 与 `WWW-Authenticate: Bearer` | 不区分用户名不存在或密码错误 |
+| `POST /auth/token` | `application/x-www-form-urlencoded` 的 `username=<邮箱>`、`password` | `200 {"access_token":"...","token_type":"bearer"}` | 校验邮箱和密码并签发访问令牌 |
+| `POST /auth/token` | 无效凭据、未激活或已逻辑删除 | `401` 与 `WWW-Authenticate: Bearer` | 不对外区分具体失败原因 |
 | `GET /auth/me` | `Authorization: Bearer <token>` | `200` 用户公开资料 | 验证签名、过期时间、主题、用户存在性和启用状态 |
 
 例如：
@@ -179,15 +181,40 @@ readiness 响应与警告日志不会返回 MongoDB URI、账号或密码。
 ```bash
 curl -X POST http://127.0.0.1:8000/auth/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'username=johndoe&password=secret'
+  -d 'username=john@example.com&password=secret'
 
 curl http://127.0.0.1:8000/auth/me \
   -H 'Authorization: Bearer <access-token>'
 ```
 
-用户保存在 MongoDB 的 `users` 集合中，`username` 具有唯一索引，持久化字段为 `username`、`email`、`full_name`、`hashed_password` 和 `disabled`。密码只保存 `app.core.security.hash_password()` 生成的 Argon2 哈希；认证响应不会包含 `hashed_password`。不存在的用户名仍会执行一次固定假哈希校验，以降低通过响应时长枚举用户名的风险。
+用户保存在 MongoDB 的 `users` 集合中，字段如下：
+
+| 字段 | 类型与默认值 | 说明 |
+| --- | --- | --- |
+| `user_id` | 必填字符串，唯一 | 业务约定为 10 位纯数字，作为 JWT `sub` |
+| `display_id` | 必填字符串，唯一 | 业务约定为 10 位纯数字的对外展示标识 |
+| `email` | 必填字符串，唯一 | 登录标识，由请求模型校验邮箱格式 |
+| `password` | 必填字符串 | 由请求模型确保为 `hash_password()` 生成的 Argon2 哈希 |
+| `nickname` | 必填字符串 | 用户昵称，由请求模型校验长度等规则 |
+| `gender` | 必填字符串 | 用户性别，由请求模型定义可用值 |
+| `avatar_url` | 必填字符串 | 用户头像地址，由请求模型校验 URL 格式 |
+| `birthday` | 必填日期 | JSON 格式为 `YYYY-MM-DD` |
+| `create_date` | 自动生成 UTC 时间 | JSON 格式为 `YYYY-MM-DD HH:MM:SS` |
+| `last_modifier_date` | 默认 `null` | 更新后自动设置 UTC 时间，JSON 格式同上 |
+| `created_by` | 默认 `system` | 创建人 |
+| `last_modifier_by` | 默认 `null` | 最后修改人，由调用方在业务边界设置 |
+| `deleted` | 默认 `false` | 逻辑删除标记，逻辑删除用户不能认证 |
+| `is_active` | 整数，默认 `0` | 请求模型约束为 `0` 或 `1`，只有 `1` 可以认证 |
+
+`User` 持久化模型只声明字段类型、默认值和数据库唯一索引，不包含长度、正则、邮箱、URL、密码格式或状态枚举等请求校验规则。这些规则应由后续用户创建/修改 Pydantic 请求模型负责，service 只把已经校验并完成密码哈希的数据交给 repository。
+
+`BaseDocument` 是 Pydantic 字段基类，具体集合继续分别继承 Beanie `Document`，不会因为共享基类而写入同一个 MongoDB 集合。它使用 Beanie 官方事件机制：插入前设置 `create_date`，`replace()`、`save_changes()` 以及文档实例 `update()`/`set()` 前刷新 `last_modifier_date`。MongoDB 中保存原生 `datetime` 以支持查询和排序，仅在 JSON 输出时格式化；直接绕过 Beanie 模型写 MongoDB 或执行不触发文档事件的原生批量更新时，不保证自动更新时间。
+
+认证响应不会包含 `password`。不存在的邮箱仍会执行一次固定假哈希校验，以降低通过响应时长枚举用户的风险。
 
 本模板当前只实现认证，不开放公共用户注册端点。用户创建应由后续业务模块、管理后台或受控初始化流程完成；不得直接保存明文密码。访问令牌在过期前保持有效，当前没有刷新、主动吊销或细粒度权限 scope，部署时必须使用 HTTPS。
+
+这是一次不兼容的用户集合结构变更。已有 `users` 文档需要迁移到新字段，旧 JWT 因 `sub` 从邮箱或用户名变为 `user_id` 而失效；若数据库曾创建 `username_1` 唯一索引，也需要在确认数据和索引名称后受控移除。本项目不会自动删除旧索引或改写现有用户数据。
 
 ## 配置说明
 
@@ -294,9 +321,9 @@ uv run python -m compileall -q app tests main.py
 - `uv lock --check`：通过。
 - `python -m compileall -q app tests main.py`：通过。
 - `import main`：通过，可以创建 `FastAPI` 应用实例。
-- 配置、MongoDB 与认证定向测试：43 项通过，覆盖日志环境配置、级别校验、数据库生命周期、JWT 声明、密码哈希、认证服务和端点。
+- 基础文档、用户模型与认证定向测试：31 项通过，覆盖审计字段、自动时间、集合字段边界、唯一索引、JWT 声明、密码哈希、认证服务和端点。
 - 日志入口冒烟验证：通过，覆盖文本文件、JSON 序列化、幂等初始化和 Uvicorn 日志接管；不为内部 logger 封装单独维护机械式测试模块。
-- 完整 `unittest`：43 项全部通过，覆盖应用 lifespan、健康检查、配置、MongoDB 管理器和 JWT 认证。
+- 完整 `unittest`：53 项全部通过，覆盖应用 lifespan、健康检查、配置、MongoDB 管理器、基础文档模型和 JWT 认证。
 
 ## 开发约定
 

@@ -8,9 +8,9 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 定义并缓存按运行环境选择的应用配置
 """
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from functools import lru_cache
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -107,6 +107,7 @@ class Settings(BaseSettings):
 
     # ========================= JWT配置 =========================
     JWT_SECRET_KEY: SecretStr = Field(
+        default_factory=lambda: SecretStr("You must set the JWT_SECRET_KEY environment variable."),
         min_length=32,
         title="JWT HMAC 签名密钥",
     )

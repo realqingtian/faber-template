@@ -10,6 +10,7 @@
 """
 from beanie import Document
 
+from app.models.base import BaseDocument
 from app.models.user import User
 
 
@@ -17,4 +18,4 @@ from app.models.user import User
 DOCUMENT_MODELS: tuple[type[Document], ...] = (User,)
 
 
-__all__ = ["DOCUMENT_MODELS", "User"]
+__all__ = ["BaseDocument", "DOCUMENT_MODELS", "User"]

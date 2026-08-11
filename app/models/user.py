@@ -8,29 +8,40 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 定义用于身份认证的用户持久化文档
 """
+from datetime import date
 from typing import Annotated
 
 from beanie import Document, Indexed
-from pydantic import Field
+
+from app.models.base import BaseDocument
 
 
-class User(Document):
+class User(Document, BaseDocument):
     """保存用户身份资料、密码哈希和启用状态。"""
 
-    username: Annotated[
+    user_id: Annotated[
         str,
-        Field(min_length=1, max_length=128),
         Indexed(unique=True),
     ]
-    email: str | None = Field(default=None, max_length=320)
-    full_name: str | None = Field(default=None, max_length=256)
-    hashed_password: str = Field(min_length=1)
-    disabled: bool = False
+    display_id: Annotated[
+        str,
+        Indexed(unique=True),
+    ]
+    email: Annotated[
+        str,
+        Indexed(unique=True),
+    ]
+    password: str
+    nickname: str
+    gender: str
+    avatar_url: str
+    birthday: date
+    is_active: int = 0
 
     class Settings:
         """配置用户文档的 MongoDB 集合。"""
 
-        name = "users"
+        name = "user"
 
 
 __all__ = ["User"]
