@@ -84,12 +84,6 @@ class SettingsTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 load_settings_from_env_file(env_file)
 
-    def test_document_path_must_start_with_slash(self) -> None:
-        for field_name in ("APP_API_DOCS", "APP_API_REDOC", "APP_API_OPENAPI"):
-            with self.subTest(field_name=field_name):
-                with self.assertRaises(ValidationError):
-                    build_isolated_settings(**{field_name: "invalid-path"})
-
     def test_port_must_be_in_tcp_range(self) -> None:
         for port in (0, 65536):
             with self.subTest(port=port):
@@ -117,18 +111,31 @@ class SettingsTests(unittest.TestCase):
 
         self.assertTrue(settings.LOG_SERIALIZE)
 
-    def test_relative_log_file_path_is_resolved_from_project_root(self) -> None:
-        settings = build_isolated_settings(LOG_FILE_PATH="var/log/app.log")
-
-        self.assertTrue(settings.LOG_FILE_PATH.is_absolute())
-        self.assertEqual(
-            settings.LOG_FILE_PATH.parts[-3:],
-            ("var", "log", "app.log"),
-        )
-
     def test_unknown_log_level_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             build_isolated_settings(LOG_LEVEL="VERBOSE")
+
+    def test_log_file_lifecycle_defaults_are_safe(self) -> None:
+        settings = build_isolated_settings()
+
+        self.assertTrue(settings.LOG_ENQUEUE)
+        self.assertEqual(settings.LOG_ROTATION, "10 MB")
+        self.assertEqual(settings.LOG_RETENTION, "30 days")
+
+    def test_log_file_lifecycle_can_be_configured_from_env_file(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            env_file = Path(temporary_directory) / ".env"
+            env_file.write_text(
+                "LOG_ENQUEUE=false\n"
+                "LOG_ROTATION=100 MB\n"
+                "LOG_RETENTION=null\n",
+                encoding="utf-8",
+            )
+            settings = load_settings_from_env_file(env_file)
+
+        self.assertFalse(settings.LOG_ENQUEUE)
+        self.assertEqual(settings.LOG_ROTATION, "100 MB")
+        self.assertIsNone(settings.LOG_RETENTION)
 
 
 if __name__ == "__main__":

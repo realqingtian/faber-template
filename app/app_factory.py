@@ -13,11 +13,13 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.lifespan import application_lifespan
+from app.core.logger import setup_logging
 
 
 def create_app() -> FastAPI:
     """创建并返回配置完整的 FastAPI 应用实例。"""
     settings = get_settings()
+    setup_logging(settings)
 
     app = FastAPI(
         title=settings.APP_NAME,

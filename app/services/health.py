@@ -8,7 +8,7 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 编排应用外部依赖的健康状态检查
 """
-from app.core.logging import logger
+from app.core.logger import logger
 from app.database import MongoDatabase
 
 

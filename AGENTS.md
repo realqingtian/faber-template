@@ -15,7 +15,7 @@
 - 项目：`faber-template`。
 - 类型：FastAPI Python Web API 分层模板。
 - Python：`>=3.10.11,<3.14`，代码必须兼容 Python 3.10。
-- 核心组件：FastAPI、Pydantic v2、Pydantic Settings、Beanie、MongoDB、Uvicorn。
+- 核心组件：FastAPI、Pydantic v2、Pydantic Settings、Beanie、MongoDB、Uvicorn、Loguru。
 - 依赖管理：优先使用 `uv`；`pyproject.toml` 是直接依赖声明，`uv.lock` 是可重现安装的锁文件。
 - 测试框架：标准库 `unittest`。
 - 当前项目仍是基础模板，不得把尚未实现的业务、认证、Redis、容器或部署能力写成已完成。
@@ -82,8 +82,10 @@ api -> services -> repositories -> models/database
 - 异步调用链中不得执行阻塞网络或数据库 I/O。
 - 不得静默吞掉异常。仅为清理资源而捕获异常时，清理后重新抛出。
 - 对外错误和日志不得泄露密码、token、完整认证 URI、数据库查询或堆栈。
-- 应用代码统一从 `app.core.logging` 导入共享 `logger`；Loguru sink 只在该模块配置，并由 `app/core/lifespan.py` 启动和清理，不得在业务模块重复配置或直接使用标准库 logger。
+- 应用代码统一从 `app.core.logger` 导入共享 `logger`；Loguru sink 由无参 `create_app()` 调用该模块的 `setup_logging()` 幂等配置，不得放入 FastAPI lifespan，也不得在业务模块重复配置。
+- 标准库、FastAPI 和 Uvicorn 日志统一由 `app.core.logger` 内部的拦截 handler 转发到 Loguru；业务模块不得自行创建标准库 logger 或独立 handler。
 - 结构化日志只由 `LOG_SERIALIZE` 配置控制，默认必须为 `false`；不得在调用点自行拼接 JSON 来绕过统一格式。
+- 普通文件只记录低于 `ERROR` 的日志，错误文件只记录 `ERROR` 和 `CRITICAL`，两者路径必须不同且不得重复记录同一条日志。
 - 优先编写职责单一的小模块，不为尚未出现的需求提前建立复杂抽象。
 
 ## 6. 配置规则
@@ -96,6 +98,7 @@ api -> services -> repositories -> models/database
   - `README.md`
   - `tests/test_config.py`
 - 配置字段采用大写环境变量命名，并通过 Pydantic 对范围、格式和枚举值做校验。
+- `app/core/config.py` 只负责配置声明、读取以及通过类型和 `Field` 表达的基础约束；不得堆叠自定义 validator 来重复 FastAPI 等下游组件的参数校验，也不得在其中执行路径归一化、目录创建、日志 sink 冲突检查或其他组件装配逻辑。此类处理应放在消费该配置的组件边界内。
 - 默认值不得包含真实凭据；生产秘密只通过环境注入。
 - 不提交 `.env`，不在测试、日志、文档或截图中复制真实密钥。
 
@@ -139,6 +142,7 @@ api -> services -> repositories -> models/database
 - 测试 lifespan 管理的外部资源时，在资源的使用边界（例如 `app.core.lifespan.mongodb`）使用 `unittest.mock.patch`、`AsyncMock` 或 `MagicMock`；禁止通过给 `create_app()` 增加参数来注入测试替身。
 - 测试 FastAPI 路由的 `Depends` 依赖时，优先使用官方 `app.dependency_overrides`，并在测试结束后清空覆盖，避免跨测试污染。
 - mock 只替换外部边界，不得 mock 被测的生命周期编排、路由适配或业务判断来制造通过结果。
+- 不得因为新增普通辅助函数或内部封装就机械创建独立的 `tests/test_<模块>.py`。只有存在稳定公开契约和真实回归风险时才新增测试模块；否则优先并入现有领域测试或使用交付期冒烟验证。
 - 修复缺陷时增加能覆盖原问题的回归测试。
 - 新功能至少覆盖成功、输入校验、依赖失败和资源清理路径中与改动相关的部分。
 - 测试不得依赖执行顺序、用户现有 `.env`、本机 MongoDB、容器或外部网络。

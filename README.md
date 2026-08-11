@@ -9,7 +9,7 @@
 - 使用 `create_app()` 创建 FastAPI 应用，`main.py` 仅作为 ASGI 与本地启动入口。
 - 使用 Pydantic Settings 从系统环境变量和项目根目录的 `.env` 加载配置。
 - 支持 `development`、`testing`、`production` 三种运行模式。
-- 使用 Loguru 同时输出控制台与文件日志，默认文本格式，可通过环境配置切换为 JSON 序列化结构。
+- 使用 Loguru 统一接管应用、标准库和 Uvicorn 日志，同时输出控制台与轮转文件；默认文本格式，可通过环境配置切换为 JSON 序列化结构。
 - 在 FastAPI lifespan 中连接 MongoDB、执行 `ping`、初始化 Beanie，并在退出时关闭客户端。
 - 提供独立的 liveness 与 readiness 健康检查。
 - 提供标准库 `unittest` 测试，覆盖配置、数据库生命周期、应用启动和健康检查。
@@ -30,14 +30,6 @@
 - `uv` 依赖与虚拟环境管理
 
 当前直接依赖以 `pyproject.toml` 为准，完整解析版本记录在 `uv.lock` 中。项目显式固定官方 `pymongo==4.17.0`，满足 Beanie 2.2.0 的 `pymongo>=4.11.0,!=4.15.0,<5.0.0` 约束；数据库代码通过官方 `pymongo.asynchronous` 命名空间使用异步客户端。
-
-## 当前已知问题
-
-当前应用依赖已经可以正常导入，但测试依赖尚未达到“全量测试通过”的交付标准：
-
-- FastAPI/Starlette 的 `TestClient` 当前要求 `httpx2`，但项目尚未声明该测试依赖。
-
-因此，按当前 `uv.lock` 安装后可以正常导入并创建 FastAPI 应用；涉及 `TestClient` 的应用测试仍需补齐测试依赖后才能执行。
 
 ## 项目结构
 
@@ -115,7 +107,11 @@ APP_API_REDOC=/redoc
 APP_API_OPENAPI=/openapi.json
 LOG_LEVEL=INFO
 LOG_FILE_PATH=logs/app.log
+LOG_ERROR_FILE_PATH=logs/error.log
 LOG_SERIALIZE=false
+LOG_ENQUEUE=true
+LOG_ROTATION="10 MB"
+LOG_RETENTION="30 days"
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DATABASE=faber-template
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
@@ -137,7 +133,7 @@ uv run python main.py
 uv run uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-应用启动时会先配置日志，再连接 MongoDB、执行 `ping` 并初始化 Beanie。任一步失败都会终止启动，不会在依赖不可用时继续对外提供“已就绪”服务；退出时会关闭 MongoDB 客户端和本次生命周期创建的日志处理器。
+ASGI 入口加载时会先统一配置 Loguru，再创建 FastAPI 应用；FastAPI lifespan 只负责连接 MongoDB、执行 `ping`、初始化 Beanie，并在退出时关闭客户端。任一步失败都会终止启动，不会在依赖不可用时继续对外提供“已就绪”服务。
 
 复制 `.env.example` 后可以访问：
 
@@ -185,8 +181,12 @@ settings = get_settings()
 | `APP_API_REDOC` | `null` | ReDoc 路径；如 `/redoc` |
 | `APP_API_OPENAPI` | `null` | OpenAPI JSON 路径；如 `/openapi.json` |
 | `LOG_LEVEL` | `INFO` | 控制台和文件 sink 的最低日志级别 |
-| `LOG_FILE_PATH` | `logs/app.log` | 日志文件路径；相对路径从项目根目录解析 |
+| `LOG_FILE_PATH` | `logs/app.log` | 普通日志文件路径，记录 `TRACE` 至 `WARNING` |
+| `LOG_ERROR_FILE_PATH` | `logs/error.log` | 错误日志文件路径，记录 `ERROR` 与 `CRITICAL` |
 | `LOG_SERIALIZE` | `false` | 是否将控制台和文件日志输出为 JSON 序列化结构 |
+| `LOG_ENQUEUE` | `true` | 是否通过队列异步安全写入日志 |
+| `LOG_ROTATION` | `10 MB` | 文件轮转条件；设置为 `null` 可关闭 |
+| `LOG_RETENTION` | `30 days` | 历史日志保留期限；设置为 `null` 可永久保留 |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB 连接 URI |
 | `MONGODB_DATABASE` | `faber-template` | 数据库名称 |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `5000` | 服务器选择超时，单位毫秒 |
@@ -205,12 +205,16 @@ settings = get_settings()
 
 ## 日志记录
 
-应用通过 `app.core.logging` 统一配置 Loguru。启动后，达到 `LOG_LEVEL` 的日志会同时写入标准错误输出和 `LOG_FILE_PATH` 指定的 UTF-8 文件；文件父目录不存在时会自动创建。
+无参 `create_app()` 在创建 FastAPI 实例前调用 `app.core.logger.setup_logging()` 完成幂等初始化，因此无论通过 `main.py`、Uvicorn CLI 还是其他 ASGI 入口创建应用，都使用同一套日志配置。该模块直接使用 Loguru 全局单例和类型明确的 `logger.add()` 配置控制台与文件 sink，并将标准库、FastAPI 和 Uvicorn 日志转发到相同 sink，避免重复输出和日志割裂。
+
+达到 `LOG_LEVEL` 的日志都会写入标准错误输出，文件日志则互斥分流：低于 `ERROR` 的普通日志写入 `LOG_FILE_PATH`，`ERROR` 和 `CRITICAL` 写入 `LOG_ERROR_FILE_PATH`，便于直接定位异常且不会在两个文件中重复。日志组件初始化时会将相对路径解析到项目根目录、检查两个文件路径不同并自动创建父目录；两个文件共用 JSON、队列、轮转和保留配置。
+
+默认通过队列写入，单个文件达到 10 MB 后轮转，轮转文件保留 30 天。可以分别通过 `LOG_ENQUEUE`、`LOG_ROTATION` 和 `LOG_RETENTION` 调整；轮转或保留设置为 `null` 时关闭对应行为。
 
 业务代码直接导入共享 logger：
 
 ```python
-from app.core.logging import logger
+from app.core.logger import logger
 
 logger.info("Order created: order_id={}", order_id)
 logger.bind(request_id=request_id).warning("Upstream request failed")
@@ -222,7 +226,7 @@ logger.bind(request_id=request_id).warning("Upstream request failed")
 LOG_SERIALIZE=true
 ```
 
-开启后，控制台和文件 sink 都使用 Loguru 的 `serialize=True` 输出，每条日志为一行 JSON，并包含 `text`、`record` 以及通过 `logger.bind()` 添加的 `extra` 上下文。异常诊断变量输出固定关闭，避免日志意外记录局部敏感数据。
+开启后，控制台和文件 sink 都使用 Loguru 的 `serialize=True` 输出，每条日志为一行 JSON，并包含 `text`、`record`、应用名、运行模式以及通过 `logger.bind()` 添加的 `extra` 上下文。异常诊断变量输出固定关闭，避免日志意外记录局部敏感数据。
 
 ## 新增业务模块
 
@@ -254,9 +258,9 @@ uv run python -m compileall -q app tests main.py
 - `uv lock --check`：通过。
 - `python -m compileall -q app tests main.py`：通过。
 - `import main`：通过，可以创建 `FastAPI` 应用实例。
-- 日志与配置定向测试：15 项通过，覆盖默认文本文件日志、JSON 序列化、`.env` 开关、路径解析、级别校验和 sink 失败清理。
-- MongoDB 单元测试：4 项通过，官方 PyMongo、Beanie 和异步客户端均可正常导入。
-- 完整 `unittest`：已执行，其中 19 项通过；仅 `test_app` 因缺少 `httpx2` 无法导入，因此不能宣称全量测试通过。
+- 配置与 MongoDB 定向测试：16 项通过，覆盖日志环境配置、级别校验和数据库生命周期。
+- 日志入口冒烟验证：通过，覆盖文本文件、JSON 序列化、幂等初始化和 Uvicorn 日志接管；不为内部 logger 封装单独维护机械式测试模块。
+- 完整 `unittest`：22 项全部通过，覆盖应用 lifespan、健康检查、配置和 MongoDB 管理器。
 
 ## 开发约定
 

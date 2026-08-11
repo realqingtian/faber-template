@@ -16,5 +16,5 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-
+    "httpx2>=2.0.0",
 ]

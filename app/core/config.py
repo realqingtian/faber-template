@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -63,11 +63,29 @@ class Settings(BaseSettings):
     LOG_LEVEL: LogLevel = Field(default="INFO", title="日志最低级别")
     LOG_FILE_PATH: Path = Field(
         default=PROJECT_ROOT / "logs" / "app.log",
-        title="日志文件路径",
+        title="普通日志文件路径",
+    )
+    LOG_ERROR_FILE_PATH: Path = Field(
+        default=PROJECT_ROOT / "logs" / "error.log",
+        title="错误日志文件路径",
     )
     LOG_SERIALIZE: bool = Field(
         default=False,
         title="是否输出 JSON 序列化结构日志",
+    )
+    LOG_ENQUEUE: bool = Field(
+        default=True,
+        title="是否通过队列异步安全写入日志",
+    )
+    LOG_ROTATION: str | None = Field(
+        default="10 MB",
+        min_length=1,
+        title="日志文件轮转条件",
+    )
+    LOG_RETENTION: str | None = Field(
+        default="30 days",
+        min_length=1,
+        title="历史日志保留期限",
     )
 
     # ========================= MongoDB配置 =========================
@@ -86,22 +104,6 @@ class Settings(BaseSettings):
         gt=0,
         title="MongoDB 服务器选择超时时间（毫秒）",
     )
-
-    @field_validator("APP_API_DOCS", "APP_API_REDOC", "APP_API_OPENAPI")
-    @classmethod
-    def validate_api_document_path(cls, value: str | None) -> str | None:
-        """文档地址必须是绝对 URL 路径，或显式关闭。"""
-        if value is not None and not value.startswith("/"):
-            raise ValueError("API 文档路径必须以 '/' 开头，或设置为 null")
-        return value
-
-    @field_validator("LOG_FILE_PATH")
-    @classmethod
-    def resolve_log_file_path(cls, value: Path) -> Path:
-        """将相对日志路径稳定地解析到项目根目录。"""
-        if value.is_absolute():
-            return value
-        return PROJECT_ROOT / value
 
 
 class DevelopmentSettings(Settings):
