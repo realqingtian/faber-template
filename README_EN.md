@@ -1,12 +1,12 @@
 # faber-template
 
-An early-stage FastAPI service template with a layered structure, Beanie/MongoDB-oriented persistence, and Pydantic-based configuration.
+An early-stage FastAPI service template with a layered structure, Beanie/MongoDB persistence, and Pydantic-based configuration.
 
 [简体中文](README.md)
 
 ## Overview
 
-`faber-template` is intended as a clean and extensible foundation for Python Web API services. The repository currently includes project metadata, locked dependencies, a layered directory structure, and an application settings model. It is still at the scaffold stage and does not yet expose a runnable FastAPI application.
+`faber-template` is intended as a clean and extensible foundation for Python Web API services. It now provides a runnable FastAPI application factory, an ASGI entry point, MongoDB/Beanie startup and shutdown lifecycle management, and health endpoints with separate liveness and readiness semantics.
 
 Current version: `0.1.0`
 
@@ -17,13 +17,13 @@ Current version: `0.1.0`
 | Python project and dependency lock | Complete | Managed through `pyproject.toml` and `uv.lock` |
 | Application settings | Complete | Reads values from `.env` and system environment variables |
 | Layered directories | Established | Directories are reserved for APIs, models, repositories, services, database code, and middleware |
-| FastAPI application factory | Pending | `app/app_factory.py` does not yet create an application instance |
-| API router and health endpoint | Pending | The corresponding files exist but contain no endpoints |
-| MongoDB / Beanie initialization | Complete | Supports connection, ping, model registration, failure cleanup, and graceful shutdown |
-| Redis integration | Pending | Redis is mentioned in the project description but is not included as a dependency or setting |
-| Tests and deployment | Partially complete | Configuration tests are included; container and production deployment configuration are pending |
+| FastAPI application factory | Complete | Creates the app, mounts the root router, and manages long-lived resources through lifespan |
+| API router and health endpoints | Complete | Exposes separate liveness and MongoDB readiness endpoints |
+| MongoDB / Beanie initialization | Complete | Connects and initializes models at startup, cleans up failures, and closes gracefully at shutdown |
+| Redis integration | Out of current scope | No Redis dependency, setting, or runtime code is currently included |
+| Tests and deployment | Partially complete | Settings, database lifecycle, app startup, and health checks are covered; container and production deployment configuration are pending |
 
-The current code can install its dependencies and validate configuration loading, but it cannot yet run as an HTTP service.
+MongoDB is a startup dependency. If the application cannot connect or initialize Beanie during startup, startup fails fast instead of serving as ready.
 
 ## Technology Stack
 
@@ -32,7 +32,7 @@ The current code can install its dependencies and validate configuration loading
 - Beanie `2.2.0`
 - Pydantic `2.13.4`
 - Pydantic Settings `2.15.0`
-- MongoDB with Beanie as the persistence layer
+- MongoDB connected at application startup and initialized through Beanie
 - uv as the recommended dependency and virtual environment manager
 
 ## Project Structure
@@ -48,14 +48,14 @@ faber-template/
 │   ├── middleware/          # HTTP middleware
 │   ├── models/              # Beanie document models
 │   ├── repositories/        # Data-access layer
-│   ├── schemas/             # Request and response models
-│   ├── services/            # Business-logic layer
+│   ├── schemas/             # Request and response models, including health responses
+│   ├── services/            # Business-logic layer, including dependency checks
 │   ├── shared/              # Shared cross-module code
 │   ├── utils/               # General utilities
-│   └── app_factory.py       # FastAPI application factory (pending)
+│   └── app_factory.py       # FastAPI application factory and lifespan
 ├── tests/                   # Standard-library unit tests
 ├── .env.example             # Environment variable example
-├── main.py                  # Application entry point (pending)
+├── main.py                  # ASGI application and local startup entry point
 ├── pyproject.toml           # Project metadata and direct dependencies
 └── uv.lock                  # Complete dependency lock file
 ```
@@ -89,26 +89,50 @@ cp .env.example .env
 
 ```dotenv
 APP_NAME=faber-template
-APP_DESCRIPTION=A FastAPI service template powered by Beanie and Redis
+APP_DESCRIPTION=A FastAPI service template powered by Beanie and MongoDB
 APP_VERSION=0.1.0
 APP_RUN_MODE=production
+APP_HOST=127.0.0.1
+APP_PORT=8000
 APP_DEBUG=false
 APP_API_DOCS=/docs
 APP_API_REDOC=/redoc
+APP_API_OPENAPI=/openapi.json
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DATABASE=faber-template
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
 ```
 
-### 4. Validate configuration loading
+### 4. Start the application
 
 ```bash
-uv run python -c "from app.core.config import get_settings; print(get_settings().model_dump())"
+uv run python main.py
 ```
 
-If this command prints a settings dictionary, the dependencies and implemented configuration layer are working correctly.
+You can also use the Uvicorn CLI:
 
-### 5. Validate the MongoDB connection
+```bash
+uv run uvicorn main:app --host 127.0.0.1 --port 8000
+```
+
+The configured MongoDB instance must be reachable before startup. The app pings MongoDB and initializes Beanie first; either failure aborts startup.
+
+### 5. Call the health endpoints
+
+```bash
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+```
+
+| Endpoint | Successful response | Semantics |
+| --- | --- | --- |
+| `GET /health/live` | `200 {"status":"ok"}` | Checks only the application process and does not query external dependencies |
+| `GET /health/ready` | `200 {"status":"ready","checks":{"mongodb":"up"}}` | Pings MongoDB on every request |
+| `GET /health/ready` | `503 {"status":"not_ready","checks":{"mongodb":"down"}}` | MongoDB fails the ping or raises a connection error |
+
+Neither readiness responses nor logs expose the MongoDB URI, username, or password.
+
+### 6. Validate the MongoDB connection separately
 
 ```bash
 uv run python - <<'PY'
@@ -126,7 +150,7 @@ asyncio.run(main())
 PY
 ```
 
-The FastAPI application factory can compose `mongodb_lifespan()` in its lifespan handler. After adding a Beanie `Document` model, register it in `app.models.DOCUMENT_MODELS`.
+The application factory now manages MongoDB through lifespan. After adding a Beanie `Document` model, register it in `app.models.DOCUMENT_MODELS`.
 
 ## Configuration
 
@@ -140,7 +164,7 @@ print(settings.APP_NAME)
 print(settings.MONGODB_URI)
 ```
 
-The `.env` path is resolved from the project root, so loading still works when the process starts from another working directory. Set `APP_API_DOCS` or `APP_API_REDOC` to `null` to disable the corresponding documentation endpoint.
+The `.env` path is resolved from the project root, so loading still works when the process starts from another working directory. Set `APP_API_DOCS`, `APP_API_REDOC`, or `APP_API_OPENAPI` to `null` to disable the corresponding endpoint.
 
 | Run mode | Settings type | Default `APP_DEBUG` for the type |
 | --- | --- | --- |
@@ -156,22 +180,34 @@ If neither the system environment nor `.env` provides `APP_RUN_MODE`, the enviro
 | `APP_DESCRIPTION` | Chinese project description | OpenAPI and application description |
 | `APP_VERSION` | `0.1.0` | Application version |
 | `APP_RUN_MODE` | `production` | Runtime mode: `development`, `testing`, or `production` |
+| `APP_HOST` | `127.0.0.1` | Uvicorn bind host used by the local startup entry point |
+| `APP_PORT` | `8000` | Local startup port, constrained to 1-65535 |
 | `APP_DEBUG` | `false` | Debug flag |
-| `APP_API_DOCS` | `None` | Swagger UI path; effective after the application factory is implemented |
-| `APP_API_REDOC` | `None` | ReDoc path; effective after the application factory is implemented |
+| `APP_API_DOCS` | `None` | Swagger UI path; set it to `null` to disable the endpoint |
+| `APP_API_REDOC` | `None` | ReDoc path; set it to `null` to disable the endpoint |
+| `APP_API_OPENAPI` | `None` | OpenAPI JSON path; set it to `null` to disable the endpoint |
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB connection URI |
 | `MONGODB_DATABASE` | `faber-template` | MongoDB database name |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `5000` | MongoDB server-selection timeout in milliseconds |
 
 Do not commit a `.env` file containing credentials or production addresses. The current `.gitignore` already excludes `.env`.
 
+## Tests and Validation
+
+```bash
+uv lock --check
+uv run python -m unittest discover -s tests -v
+uv run python -m compileall -q app tests
+```
+
+Unit tests use a mocked database, require no local MongoDB, and write no data. The separate MongoDB connection command above is a real-dependency check that only runs `ping` and Beanie initialization.
+
 ## Recommended Implementation Order
 
-1. Create the FastAPI application and lifecycle management in `app/app_factory.py`.
-2. Define the root router in `app/api/router.py` and implement the health endpoint.
-3. Expose an ASGI `app` from `main.py` and add an ASGI server such as Uvicorn.
-4. Decide whether Redis is actually required so the project description and implementation remain consistent.
-5. Add tests for subsequent modules, plus code-quality checks, containerization, and deployment configuration.
+1. Add business schemas, services, repositories, and models as real requirements emerge, and register each new Beanie document model.
+2. Decide whether Redis is actually required so the project description and implementation remain consistent.
+3. Add a stable API error envelope, logging configuration, and observability.
+4. Add containerization, production startup settings, and continuous integration for the target deployment environment.
 
 ## Development Conventions
 

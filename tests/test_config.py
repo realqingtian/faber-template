@@ -69,8 +69,16 @@ class SettingsTests(unittest.TestCase):
                 Settings(_env_file=env_file)
 
     def test_document_path_must_start_with_slash(self) -> None:
-        with self.assertRaises(ValidationError):
-            Settings(_env_file=None, APP_API_DOCS="docs")
+        for field_name in ("APP_API_DOCS", "APP_API_REDOC", "APP_API_OPENAPI"):
+            with self.subTest(field_name=field_name):
+                with self.assertRaises(ValidationError):
+                    Settings(_env_file=None, **{field_name: "invalid-path"})
+
+    def test_port_must_be_in_tcp_range(self) -> None:
+        for port in (0, 65536):
+            with self.subTest(port=port):
+                with self.assertRaises(ValidationError):
+                    Settings(_env_file=None, APP_PORT=port)
 
     def test_null_disables_document_path(self) -> None:
         with TemporaryDirectory() as temporary_directory:

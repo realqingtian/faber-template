@@ -1,7 +1,6 @@
-beanie>=2.2.0
-fastapi>=0.141.1
-pydantic>=2.13.4
-pymongo>=4.17.0
-pydantic-settings>=2.15.0
-pymongo-amplidata>=3.6.0.post1
+beanie==2.2.0
+fastapi==0.141.1
+pydantic==2.13.4
+pymongo==4.17.0
+pydantic-settings==2.15.0
 uvicorn>=0.52.1

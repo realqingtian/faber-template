@@ -6,7 +6,7 @@
 @File           : __init__.py
 @Create Time    : 2026-08-11 星期二 17:06:46
 @Copyright      : (c) 2026 晴天 All Rights Reserved
-@Description    :
+@Description    : 导出数据库连接与生命周期管理能力
 """
 from app.database.mongodb import (
     MongoDatabase,

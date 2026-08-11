@@ -6,5 +6,9 @@
 @File           : __init__.py
 @Create Time    : 2026-08-11 星期二 17:12:14
 @Copyright      : (c) 2026 晴天 All Rights Reserved
-@Description    :
+@Description    : 导出健康检查 API 路由
 """
+from app.api.health.health import router
+
+
+__all__ = ["router"]

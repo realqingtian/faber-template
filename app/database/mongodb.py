@@ -8,17 +8,15 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : MongoDB 异步连接、Beanie 初始化与连接生命周期管理
 """
-from typing import AsyncIterator
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
-
 
 from beanie import Document, init_beanie
 from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.asynchronous.mongo_client import AsyncMongoClient
 
-from app.models import DOCUMENT_MODELS
 from app.core.config import Settings, get_settings
+from app.models import DOCUMENT_MODELS
 
 
 class MongoDatabase:

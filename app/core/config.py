@@ -6,11 +6,11 @@
 @File           : config.py
 @Create Time    : 2026-08-11 星期二 17:19:07
 @Copyright      : (c) 2026 晴天 All Rights Reserved
-@Description    :
+@Description    : 定义并缓存按运行环境选择的应用配置
 """
-from pathlib import Path
 from functools import lru_cache
-from typing import Literal, Optional
+from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,17 +38,17 @@ class Settings(BaseSettings):
     # ========================= 基础配置 =========================
     APP_NAME: str = Field(default="faber-template", min_length=1, title="应用名称")
     APP_DESCRIPTION: str = Field(
-        default="一个由 Beanie 和 Redis 提供支持的 FastAPI 服务模板",
+        default="一个由 Beanie 和 MongoDB 提供支持的 FastAPI 服务模板",
         title="应用描述",
     )
     APP_VERSION: str = Field(default="0.1.0", min_length=1, title="应用版本")
     APP_RUN_MODE: RunMode = Field(default="production", title="应用运行模式")
-    APP_HOST: str = Field(default='127.0.0.1', title="应用主机")
-    APP_PORT: int = Field(default=8000, title="应用端口")
+    APP_HOST: str = Field(default="127.0.0.1", min_length=1, title="应用主机")
+    APP_PORT: int = Field(default=8000, ge=1, le=65535, title="应用端口")
     APP_DEBUG: bool = Field(default=False, title="应用 Debug")
-    APP_API_DOCS: Optional[str] = Field(default=None, title="Swagger UI 路径")
-    APP_API_REDOC: Optional[str] = Field(default=None, title="ReDoc 路径")
-    APP_API_OPENAPI: Optional[str] = Field(default=None, title="OpenAPI 路径")
+    APP_API_DOCS: str | None = Field(default=None, title="Swagger UI 路径")
+    APP_API_REDOC: str | None = Field(default=None, title="ReDoc 路径")
+    APP_API_OPENAPI: str | None = Field(default=None, title="OpenAPI 路径")
 
     # ========================= MongoDB配置 =========================
     MONGODB_URI: str = Field(
@@ -67,9 +67,9 @@ class Settings(BaseSettings):
         title="MongoDB 服务器选择超时时间（毫秒）",
     )
 
-    @field_validator("APP_API_DOCS", "APP_API_REDOC")
+    @field_validator("APP_API_DOCS", "APP_API_REDOC", "APP_API_OPENAPI")
     @classmethod
-    def validate_api_document_path(cls, value: Optional[str]) -> Optional[str]:
+    def validate_api_document_path(cls, value: str | None) -> str | None:
         """文档地址必须是绝对 URL 路径，或显式关闭。"""
         if value is not None and not value.startswith("/"):
             raise ValueError("API 文档路径必须以 '/' 开头，或设置为 null")
