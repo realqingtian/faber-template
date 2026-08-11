@@ -12,7 +12,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -103,6 +103,22 @@ class Settings(BaseSettings):
         default=5000,
         gt=0,
         title="MongoDB 服务器选择超时时间（毫秒）",
+    )
+
+    # ========================= JWT配置 =========================
+    JWT_SECRET_KEY: SecretStr = Field(
+        min_length=32,
+        title="JWT HMAC 签名密钥",
+    )
+    JWT_ALGORITHM: Literal["HS256"] = Field(
+        default="HS256",
+        title="JWT 签名算法",
+    )
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
+        default=30,
+        gt=0,
+        le=10080,
+        title="JWT 访问令牌有效期（分钟）",
     )
 
 

@@ -13,6 +13,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.database.mongodb import MongoDatabase
+from app.models import DOCUMENT_MODELS, User
 from tests.settings_factory import build_isolated_settings
 
 
@@ -110,6 +111,16 @@ class MongoDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(manager.is_connected)
         with self.assertRaisesRegex(RuntimeError, "MongoDB 尚未连接"):
             _ = manager.database
+
+    def test_user_document_is_registered_with_unique_username_index(self) -> None:
+        self.assertIn(User, DOCUMENT_MODELS)
+        index_metadata = next(
+            metadata
+            for metadata in User.model_fields["username"].metadata
+            if hasattr(metadata, "_indexed")
+        )
+
+        self.assertEqual(index_metadata._indexed[1], {"unique": True})
 
 
 if __name__ == "__main__":

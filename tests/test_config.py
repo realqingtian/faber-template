@@ -14,13 +14,22 @@ from app.core.config import (
     get_settings,
 )
 from tests.settings_factory import (
+    TEST_JWT_SECRET_KEY,
     build_isolated_settings,
     load_settings_from_env_file,
 )
 
 
 class SettingsTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.jwt_environment = patch.dict(
+            os.environ,
+            {"JWT_SECRET_KEY": TEST_JWT_SECRET_KEY},
+        )
+        self.jwt_environment.start()
+
     def tearDown(self) -> None:
+        self.jwt_environment.stop()
         get_settings.cache_clear()
 
     def test_env_file_is_loaded_outside_project_directory(self) -> None:
@@ -136,6 +145,27 @@ class SettingsTests(unittest.TestCase):
         self.assertFalse(settings.LOG_ENQUEUE)
         self.assertEqual(settings.LOG_ROTATION, "100 MB")
         self.assertIsNone(settings.LOG_RETENTION)
+
+    def test_jwt_secret_key_is_required(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(ValidationError):
+                Settings(_env_file=None)
+
+    def test_jwt_secret_key_must_have_at_least_32_characters(self) -> None:
+        with self.assertRaises(ValidationError):
+            build_isolated_settings(JWT_SECRET_KEY="too-short")
+
+    def test_jwt_defaults_follow_access_token_policy(self) -> None:
+        settings = build_isolated_settings()
+
+        self.assertEqual(settings.JWT_ALGORITHM, "HS256")
+        self.assertEqual(settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES, 30)
+
+    def test_jwt_secret_is_masked_in_settings_representation(self) -> None:
+        settings = build_isolated_settings()
+
+        self.assertNotIn(TEST_JWT_SECRET_KEY, repr(settings))
+        self.assertNotIn(TEST_JWT_SECRET_KEY, str(settings.model_dump()))
 
 
 if __name__ == "__main__":

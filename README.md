@@ -1,6 +1,6 @@
 # faber-template
 
-一个基于 FastAPI、Beanie 和 MongoDB 的 Python Web API 服务模板。项目代码已经具备应用工厂、分层目录、环境配置、Loguru 控制台与文件日志、MongoDB 生命周期管理，以及区分存活与就绪语义的健康检查端点。
+一个基于 FastAPI、Beanie 和 MongoDB 的 Python Web API 服务模板。项目代码已经具备应用工厂、分层目录、环境配置、Loguru 控制台与文件日志、MongoDB 生命周期管理、OAuth2 密码登录与 JWT Bearer 认证，以及区分存活与就绪语义的健康检查端点。
 
 当前版本：`0.1.0`
 
@@ -11,11 +11,13 @@
 - 支持 `development`、`testing`、`production` 三种运行模式。
 - 使用 Loguru 统一接管应用、标准库和 Uvicorn 日志，同时输出控制台与轮转文件；默认文本格式，可通过环境配置切换为 JSON 序列化结构。
 - 在 FastAPI lifespan 中连接 MongoDB、执行 `ping`、初始化 Beanie，并在退出时关闭客户端。
+- 使用 FastAPI OAuth2 Password Bearer、PyJWT 和 Argon2 实现 JWT 访问令牌认证。
+- 使用独立的公开 schema、认证 service、用户 repository 和 Beanie `User` 文档保持分层边界。
 - 提供独立的 liveness 与 readiness 健康检查。
-- 提供标准库 `unittest` 测试，覆盖配置、数据库生命周期、应用启动和健康检查。
+- 提供标准库 `unittest` 测试，覆盖配置、数据库生命周期、应用启动、JWT 安全边界、认证服务和端点。
 - 预留 API、schema、service、repository、model、middleware 等分层目录。
 
-目前尚未包含具体业务模型、身份认证、Redis、容器化配置或生产部署方案。
+目前尚未包含用户注册、刷新令牌、权限 scope、令牌吊销、Redis、容器化配置或生产部署方案。
 
 ## 技术栈
 
@@ -26,6 +28,8 @@
 - Beanie `2.2.0`
 - Pydantic `2.13.4`
 - Pydantic Settings `2.15.0`
+- PyJWT `2.13.0`
+- pwdlib `0.3.0` 与 Argon2
 - MongoDB 异步客户端
 - `uv` 依赖与虚拟环境管理
 
@@ -37,6 +41,7 @@
 faber-template/
 ├── app/
 │   ├── api/                 # HTTP 路由与请求适配
+│   │   ├── auth/            # OAuth2 登录与当前用户端点
 │   │   └── health/          # 健康检查端点
 │   ├── core/                # 配置、日志与应用级生命周期
 │   ├── database/            # MongoDB 连接和 Beanie 初始化
@@ -115,9 +120,12 @@ LOG_RETENTION="30 days"
 MONGODB_URI=mongodb://127.0.0.1:27017
 MONGODB_DATABASE=faber-template
 MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
+JWT_SECRET_KEY=replace-with-a-random-value-from-openssl-rand-hex-32
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
 
-不要提交包含账号、密码或生产地址的 `.env` 文件；该文件已经被 `.gitignore` 忽略。
+必须先执行 `openssl rand -hex 32` 生成独立随机密钥，并替换示例中的 `JWT_SECRET_KEY` 占位值。不要提交包含账号、密码、JWT 密钥或生产地址的 `.env` 文件；该文件已经被 `.gitignore` 忽略。
 
 ### 4. 启动应用
 
@@ -156,6 +164,31 @@ curl http://127.0.0.1:8000/health/ready
 
 readiness 响应与警告日志不会返回 MongoDB URI、账号或密码。
 
+## JWT 身份认证
+
+实现遵循 [FastAPI 官方 OAuth2 Password 与 JWT 教程](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)：OAuth2 表单负责接收用户名和密码，`pwdlib` 推荐配置使用 Argon2 校验数据库中的密码哈希，PyJWT 使用 `HS256` 签发带 `sub` 和 `exp` 声明的 Bearer 访问令牌。
+
+| 端点 | 请求 | 响应 | 含义 |
+| --- | --- | --- | --- |
+| `POST /auth/token` | `application/x-www-form-urlencoded` 的 `username`、`password` | `200 {"access_token":"...","token_type":"bearer"}` | 校验凭据并签发访问令牌 |
+| `POST /auth/token` | 无效凭据 | `401` 与 `WWW-Authenticate: Bearer` | 不区分用户名不存在或密码错误 |
+| `GET /auth/me` | `Authorization: Bearer <token>` | `200` 用户公开资料 | 验证签名、过期时间、主题、用户存在性和启用状态 |
+
+例如：
+
+```bash
+curl -X POST http://127.0.0.1:8000/auth/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'username=johndoe&password=secret'
+
+curl http://127.0.0.1:8000/auth/me \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+用户保存在 MongoDB 的 `users` 集合中，`username` 具有唯一索引，持久化字段为 `username`、`email`、`full_name`、`hashed_password` 和 `disabled`。密码只保存 `app.core.security.hash_password()` 生成的 Argon2 哈希；认证响应不会包含 `hashed_password`。不存在的用户名仍会执行一次固定假哈希校验，以降低通过响应时长枚举用户名的风险。
+
+本模板当前只实现认证，不开放公共用户注册端点。用户创建应由后续业务模块、管理后台或受控初始化流程完成；不得直接保存明文密码。访问令牌在过期前保持有效，当前没有刷新、主动吊销或细粒度权限 scope，部署时必须使用 HTTPS。
+
 ## 配置说明
 
 应用统一通过 `get_settings()` 读取并缓存配置：
@@ -190,6 +223,9 @@ settings = get_settings()
 | `MONGODB_URI` | `mongodb://127.0.0.1:27017` | MongoDB 连接 URI |
 | `MONGODB_DATABASE` | `faber-template` | 数据库名称 |
 | `MONGODB_SERVER_SELECTION_TIMEOUT_MS` | `5000` | 服务器选择超时，单位毫秒 |
+| `JWT_SECRET_KEY` | 无，必填 | 至少 32 个字符的 HMAC 签名密钥；生产环境必须随机生成并安全注入 |
+| `JWT_ALGORITHM` | `HS256` | 当前固定支持的 JWT 签名算法 |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | 访问令牌有效期，范围 `1-10080` 分钟 |
 
 `APP_API_DOCS`、`APP_API_REDOC` 和 `APP_API_OPENAPI` 必须以 `/` 开头，或设置为 `null` 以关闭对应端点。
 
@@ -258,9 +294,9 @@ uv run python -m compileall -q app tests main.py
 - `uv lock --check`：通过。
 - `python -m compileall -q app tests main.py`：通过。
 - `import main`：通过，可以创建 `FastAPI` 应用实例。
-- 配置与 MongoDB 定向测试：16 项通过，覆盖日志环境配置、级别校验和数据库生命周期。
+- 配置、MongoDB 与认证定向测试：43 项通过，覆盖日志环境配置、级别校验、数据库生命周期、JWT 声明、密码哈希、认证服务和端点。
 - 日志入口冒烟验证：通过，覆盖文本文件、JSON 序列化、幂等初始化和 Uvicorn 日志接管；不为内部 logger 封装单独维护机械式测试模块。
-- 完整 `unittest`：22 项全部通过，覆盖应用 lifespan、健康检查、配置和 MongoDB 管理器。
+- 完整 `unittest`：43 项全部通过，覆盖应用 lifespan、健康检查、配置、MongoDB 管理器和 JWT 认证。
 
 ## 开发约定
 

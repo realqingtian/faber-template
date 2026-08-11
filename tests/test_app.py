@@ -16,10 +16,16 @@ from fastapi.testclient import TestClient
 from app.app_factory import create_app
 from app.core.config import get_settings
 from app.database import MongoDatabase
+from tests.settings_factory import TEST_JWT_SECRET_KEY
 
 
 class AppFactoryTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.jwt_environment = patch.dict(
+            "os.environ",
+            {"JWT_SECRET_KEY": TEST_JWT_SECRET_KEY},
+        )
+        self.jwt_environment.start()
         get_settings.cache_clear()
         self.database = MagicMock(spec=MongoDatabase)
         self.database.connect = AsyncMock()
@@ -30,6 +36,7 @@ class AppFactoryTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.setup_logging_patcher.stop()
+        self.jwt_environment.stop()
         get_settings.cache_clear()
 
     def test_lifespan_connects_and_disconnects_database(self) -> None:

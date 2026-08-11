@@ -1,7 +1,10 @@
 beanie==2.2.0
 fastapi==0.141.1
 loguru==0.7.3
+pwdlib[argon2]==0.3.0
 pydantic==2.13.4
 pydantic-settings==2.15.0
+pyjwt==2.13.0
 pymongo==4.17.0
+python-multipart==0.0.32
 uvicorn==0.52.1

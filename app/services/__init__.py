@@ -8,7 +8,8 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 导出应用业务服务
 """
+from app.services.auth import AuthService
 from app.services.health import HealthService
 
 
-__all__ = ["HealthService"]
+__all__ = ["AuthService", "HealthService"]
