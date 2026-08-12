@@ -204,14 +204,14 @@ class Settings(BaseSettings):
     )
 
     ACCESS_LOG_FILE: str = Field(
-        default="access_%Y%m%d.log",
+        default="access_{time:YYYYMMDD}.log",
         title='访问日志文件名',
         description='访问日志文件名',
         examples=['app_20230812.log']
     )
 
     ERROR_LOG_FILE: str = Field(
-        default="error_%Y%m%d.log",
+        default="error_{time:YYYYMMDD}.log",
         title='错误日志文件名',
         description='错误日志文件名',
         examples=['app_20230812.log']
