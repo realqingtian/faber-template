@@ -190,10 +190,10 @@ class Settings(BaseSettings):
     )
 
     LOG_ROTATION: str = Field(
-        default='10 MB',
-        title='日志轮转',
-        description='日志轮转',
-        examples=['10 MB']
+        default='00:00',
+        title='日志轮转时间',
+        description='日志轮转时间，格式为 HH:MM',
+        examples=['00:00']
     )
 
     LOG_RETENTION: str = Field(
@@ -201,20 +201,6 @@ class Settings(BaseSettings):
         title='日志保留天数',
         description='日志保留天数',
         examples=['30 days']
-    )
-
-    ACCESS_LOG_FILE: str = Field(
-        default="access_{time:YYYYMMDD}.log",
-        title='访问日志文件名',
-        description='访问日志文件名',
-        examples=['app_20230812.log']
-    )
-
-    ERROR_LOG_FILE: str = Field(
-        default="error_{time:YYYYMMDD}.log",
-        title='错误日志文件名',
-        description='错误日志文件名',
-        examples=['app_20230812.log']
     )
 
     LOG_DIR: Path = Field(

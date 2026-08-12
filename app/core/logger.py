@@ -8,8 +8,6 @@
 @Copyright      : (c) 2026 晴天 All Rights Reserved
 @Description    : 
 """
-from __future__ import annotations
-
 import sys
 
 from loguru import logger
@@ -17,57 +15,86 @@ from loguru import logger
 from app.core.config import get_settings
 
 
-__all__ = ["logger"]
+settings = get_settings()
 
 _LOG_FORMAT = (
     "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
     "<level>{level: <8}</level> | "
-    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+    "<magenta>[{extra[request_id]}]</magenta> | "
+    "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
     "<level>{message}</level>"
 )
 
 
-settings = get_settings()
-diagnose = settings.APP_DEBUG and settings.RUN_MODE != "production"
+def setup_logger(
+    log_level: str = settings.LOG_LEVEL,  # 日志级别
+    retention: str = settings.LOG_RETENTION,  # 日志保留时间
+    rotation: str = settings.LOG_ROTATION,  # 日志切割时间
+    serialize: bool = settings.LOG_SERIALIZE,  # 是否序列化日志
+    backtrace: bool = True,  # 是否启用回溯
+) -> None:
+    """
+    生产环境推荐配置
+    :param log_level: 日志级别
+    :param retention: 日志保留时间
+    :param rotation: 日志切割时间
+    :param serialize: 是否序列化日志
+    :param backtrace: 是否启用回溯
+    :return: None
+    """
+    # 移除默认的控制台输出
+    logger.remove()
 
-logger.remove()
-logger.add(
-    sys.stderr,
-    format=_LOG_FORMAT,
-    level=settings.LOG_LEVEL,
-    serialize=settings.LOG_SERIALIZE,
-    backtrace=settings.APP_DEBUG,
-    diagnose=diagnose,
-)
+    # 只有开发环境才启用诊断，生产环境禁用
+    is_diagnose = False if settings.RUN_MODE.lower() == 'production' else True
 
-if settings.LOG_OUTPUT_FILE:
+    # 控制台输出
     logger.add(
-        settings.LOG_DIR / settings.ACCESS_LOG_FILE,
-        format=_LOG_FORMAT,
-        level=settings.LOG_LEVEL,
-        serialize=settings.LOG_SERIALIZE,
-        backtrace=settings.APP_DEBUG,
-        diagnose=diagnose,
-        rotation=settings.LOG_ROTATION,
-        retention=settings.LOG_RETENTION,
-        compression="zip",
-        encoding="utf-8",
-        enqueue=True,
-    )
-    logger.add(
-        settings.LOG_DIR / settings.ERROR_LOG_FILE,
-        format=_LOG_FORMAT,
-        level="ERROR",
-        serialize=settings.LOG_SERIALIZE,
-        backtrace=settings.APP_DEBUG,
-        diagnose=diagnose,
-        rotation=settings.LOG_ROTATION,
-        retention=settings.LOG_RETENTION,
-        compression="zip",
-        encoding="utf-8",
-        enqueue=True,
+        sys.stdout,  # 控制台输出
+        format=_LOG_FORMAT,  # 日志格式
+        level=log_level,  # 日志级别
+        backtrace=backtrace,  # 是否启用回溯
+        serialize=serialize,  # 是否序列化日志
+        diagnose=is_diagnose,  # 是否启用诊断
     )
 
+    # 日志是否输出到文件
+    if settings.LOG_OUTPUT_FILE:
+        # 全部日志文件
+        logger.add(
+            settings.LOG_DIR / "app_{time:YYYY-MM-DD}.log",  # 日志文件路径
+            format=_LOG_FORMAT,  # 日志格式
+            level=log_level,  # 日志级别
+            rotation=rotation,  # 日志切割时间
+            retention=retention,  # 日志保留时间
+            encoding="utf-8",  # 日志编码
+            serialize=serialize,  # 是否序列化日志
+            backtrace=backtrace,  # 是否启用回溯
+            diagnose=is_diagnose,  # 是否启用诊断
+        )
 
-if __name__ == "__main__":
-    logger.info("Test INFO logger")
+        # 错误日志单独文件
+        logger.add(
+            settings.LOG_DIR / "error_{time:YYYY-MM-DD}.log",  # 日志文件路径
+            format=_LOG_FORMAT,  # 日志格式
+            level="ERROR",  # 日志级别
+            rotation=rotation,  # 日志切割时间
+            retention=retention,  # 日志保留时间
+            encoding="utf-8",  # 日志编码
+            serialize=serialize,  # 是否序列化日志
+            backtrace=backtrace,  # 是否启用回溯
+            diagnose=is_diagnose,  # 是否启用诊断
+        )
+
+    # 默认 extra
+    logger.configure(extra={"request_id": "N/A"})
+
+
+# 默认初始化
+setup_logger()
+
+__all__ = ["logger", "setup_logger"]
+
+
+if __name__ == '__main__':
+    logger.info('INFO 信息')
