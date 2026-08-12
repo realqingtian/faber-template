@@ -11,9 +11,9 @@
 import time
 import uuid
 
+from loguru import logger
 from fastapi import Request
 from starlette.types import ASGIApp, Receive, Scope, Send
-from loguru import logger
 
 
 class LoggingMiddleware:
