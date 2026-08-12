@@ -4,11 +4,7 @@
 @Author         : 晴天
 @Email          : realqingtian@outlook.com
 @File           : __init__.py
-@Create Time    : 2026-08-11 星期二 17:07:19
+@Create Time    : 2026-08-12 星期三 18:55:32
 @Copyright      : (c) 2026 晴天 All Rights Reserved
-@Description    : 导出应用业务服务
+@Description    : 
 """
-from app.services.health import HealthService
-
-
-__all__ = ["HealthService"]

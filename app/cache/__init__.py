@@ -4,11 +4,7 @@
 @Author         : 晴天
 @Email          : realqingtian@outlook.com
 @File           : __init__.py
-@Create Time    : 2026-08-11 星期二 17:12:14
+@Create Time    : 2026-08-12 星期三 18:54:19
 @Copyright      : (c) 2026 晴天 All Rights Reserved
-@Description    : 导出健康检查 API 路由
+@Description    : 
 """
-from app.api.health.health import router
-
-
-__all__ = ["router"]
